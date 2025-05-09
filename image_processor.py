@@ -1,4 +1,5 @@
 import base64
+import math
 
 import cv2
 import numpy as np
@@ -10,6 +11,53 @@ from utils.logging import logger
 
 def encode_image(screenshot):
     return base64.b64encode(open(screenshot, "rb").read()).decode("utf-8")
+
+
+def smart_resize(
+        image: Image.Image, factor=28, vl_high_resolution_images=False):
+    """
+    对图像进行预处理。
+
+    参数:
+        image_path：图像的路径
+        factor：图像转换为Token的最小单位
+        vl_high_resolution_images：是否提高模型的单图Token上限
+
+    """
+
+    # 获取图片的原始尺寸
+    height = image.height
+    width = image.width
+    print(f"原始图像尺寸为：高度为{height}，宽度为{width}")
+    # 将高度调整为28的整数倍
+    h_bar = round(height / factor) * factor
+    # 将宽度调整为28的整数倍
+    w_bar = round(width / factor) * factor
+
+    # 图像的Token下限：4个Token
+    min_pixels = 28 * 28 * 4
+
+    # 根据vl_high_resolution_images参数确定图像的Token上限
+    if not vl_high_resolution_images:
+        max_pixels = 1280 * 28 * 28
+    else:
+        max_pixels = 16384 * 28 * 28
+
+    # 对图像进行缩放处理，调整像素的总数在范围[min_pixels,max_pixels]内
+    if h_bar * w_bar > max_pixels:
+        beta = math.sqrt((height * width) / max_pixels)
+        h_bar = math.floor(height / beta / factor) * factor
+        w_bar = math.floor(width / beta / factor) * factor
+    elif h_bar * w_bar < min_pixels:
+        beta = math.sqrt(min_pixels / (height * width))
+        h_bar = math.ceil(height * beta / factor) * factor
+        w_bar = math.ceil(width * beta / factor) * factor
+    h_scale_factor = round(height / h_bar, 2)
+    w_scale_factor = round(width / w_bar, 2)
+    logger.info(f"图像缩放后宽高为：高度为{h_bar}，宽度为{w_bar}")
+    if h_scale_factor != w_scale_factor:
+        logger.error(f"图片缩放后宽高比例不一致")
+    return h_bar, w_bar, h_scale_factor, w_scale_factor
 
 
 def resize_image(input_image_path, output_image_path,
@@ -25,16 +73,18 @@ def resize_image(input_image_path, output_image_path,
         # 打开图片
         image = Image.open(input_image_path)
         # 获取原始图片的宽度和高度
-        width, height = image.size
+        # width, height = image.size
         # 计算缩小后的宽度和高度
-        new_width = int(width * scale_factor)
-        new_height = int(height * scale_factor)
+        # new_width = int(width * scale_factor)
+        # new_height = int(height * scale_factor)
         # 调整图片大小
+        new_height, new_width, h_scale_factor, w_scale_factor = smart_resize(image, factor=28)
         resized_image = image.resize((new_width, new_height), Image.LANCZOS)
         # 保存调整后的图片
         resized_image.save(output_image_path)
-        draw_rectangle(output_image_path)  # 绘制元素矩形框
+        # draw_rectangle(output_image_path)  # 绘制元素矩形框
         logger.info(f"图片已成功缩放，保存路径为: {output_image_path}")
+        return h_scale_factor, w_scale_factor
     except Exception as e:
         logger.error(f"处理图片时出现错误: {e}")
 
@@ -72,13 +122,15 @@ def draw_points(image: Image.Image, points: list, inner_color=None, outer_color=
     out_pull_back_ratio = float(ConfigParser.get_config('screenshot', 'out_pull_back_ratio'))
     for point in points:
         x, y = point
-        if x >= image.width - 50:
+        if x >= image.width - 0:
             x = image.width - image.width * out_pull_back_ratio
             logger.error(f"超出图片x边界，已自动拉回{image.width * out_pull_back_ratio}px")
-        if y >= image.height - 50:
+        if y >= image.height - 0:
             y = image.height - image.height * out_pull_back_ratio
             logger.error(f"超出图片y边界，已自动拉回{image.height * out_pull_back_ratio}px")
         # 绘制外环
+        x = round(x)
+        y = round(y)
         overlay_draw.ellipse(
             [(x - radius, y - radius), (x + radius, y + radius)],
             fill=outer_color

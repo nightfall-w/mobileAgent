@@ -117,6 +117,11 @@ class MobileUse(BaseTool):
 
     def get_device_resolution(self) -> Tuple[int, int]:
         result = self._adb_command("shell wm size")
+        if "Override size:" in result:
+            resolution = result.split("Override size:")[1].strip().split("x")
+            width = int(resolution[0])
+            height = int(resolution[1])
+            return width, height
         if "Physical size:" in result:
             resolution = result.split("Physical size:")[1].strip().split("x")
             width = int(resolution[0])
@@ -127,15 +132,34 @@ class MobileUse(BaseTool):
 
     def call(self, params: Union[str, dict], **kwargs):
         # 验证参数的JSON格式，并将其转换为字典，并执行对应的abd方法
+        w_scale_factor = kwargs.get("w_scale_factor", 1)
+        h_scale_factor = kwargs.get("h_scale_factor", 1)
         params = self._verify_json_format_args(params)
         action = params["action"]
-        scale_factor = float(ConfigParser.get_config('screenshot', 'scale_factor'))
-        scale_factor = 1 / scale_factor
+        # scale_factor = float(ConfigParser.get_config('screenshot', 'scale_factor'))
+        # scale_factor = 1 / scale_factor
         if params.get("coordinate"):
-            coordinate = [point * scale_factor for point in params["coordinate"]]
+            coordinate = []
+            for index, point in enumerate(params.get("coordinate")):
+                if index == 0:
+                    x = round(point * w_scale_factor)
+                    coordinate.append(x)
+                else:
+                    y = round(point * h_scale_factor)
+                    coordinate.append(y)
             params["coordinate"] = coordinate
+
         if params.get("coordinate2"):
-            coordinate2 = [point * scale_factor for point in params["coordinate2"]]
+
+            coordinate2 = []
+            for index, point in enumerate(params.get("coordinate2")):
+                if index == 0:
+                    x = round(point * w_scale_factor)
+                    coordinate2.append(x)
+                else:
+                    y = round(point * h_scale_factor)
+                    coordinate2.append(y)
+            # coordinate2 = [point * scale_factor for point in params["coordinate2"]]
             params["coordinate2"] = coordinate2
         if action == "key":
             return self._key(params["text"])
@@ -182,39 +206,53 @@ class MobileUse(BaseTool):
     def _click(self, coordinate: Tuple[int, int]):
         # 模拟点击事件
         x, y = coordinate
-        if x >= self.display_width_px - 100:
+        if x >= self.display_width_px - 0:
             x = self.display_width_px - (self.display_width_px * self.out_pull_back_ratio)
-        if y >= self.display_height_px - 100:
+        if y >= self.display_height_px - 0:
             y = self.display_height_px - (self.display_height_px * self.out_pull_back_ratio)
+        x = round(x)
+        y = round(y)
         self._adb_command(f"shell input tap {x} {y}")
         return f"Clicked at ({x}, {y})"
 
     def _long_press(self, coordinate: Tuple[int, int], time: int = 3):
         # 模拟长按事件
         x, y = coordinate
-        if x >= self.display_width_px - 100:
+        if x >= self.display_width_px - 0:
             x = self.display_width_px - (self.display_width_px * self.out_pull_back_ratio)
-        if y >= self.display_height_px - 100:
+        if y >= self.display_height_px - 0:
             y = self.display_height_px - (self.display_height_px * self.out_pull_back_ratio)
+        x = round(x)
+        y = round(y)
         self._adb_command(f"shell input swipe {x} {y} {x} {y} {int(time * 1000)}")
         return f"Long pressed at ({x}, {y}) for {time} seconds"
 
-    def _swipe(self, coordinate: Tuple[int, int], coordinate2: Tuple[int, int], time: int = 3):
+    def _swipe(self, coordinate: Tuple[int, int], coordinate2: Tuple[int, int], time: int = 1):
         # 模拟滑动事件
         x1, y1 = coordinate
         x2, y2 = coordinate2
 
-        if x1 >= self.display_width_px - 100:
+        if x1 >= self.display_width_px - 0:
             x1 = self.display_width_px - (self.display_width_px * self.out_pull_back_ratio)
-        if y1 >= self.display_height_px - 100:
+        if y1 >= self.display_height_px - 0:
             y1 = self.display_height_px - (self.display_height_px * self.out_pull_back_ratio)
 
-        if x2 >= self.display_width_px - 100:
+        if x2 >= self.display_width_px - 0:
             x2 = self.display_width_px - (self.display_width_px * self.out_pull_back_ratio)
-        if y2 >= self.display_height_px - 100:
+        if y2 >= self.display_height_px - 0:
             y2 = self.display_height_px - (self.display_height_px * self.out_pull_back_ratio)
-        self._adb_command(f"shell input swipe {x2} {y2} {x1} {y1} {int(time * 100)}")
-        return f"Swiped from ({x2}, {y2}) to ({x1}, {y1})"
+
+        # 确保滑动方向正确
+        x1 = round(x1)
+        y1 = round(y1)
+        x2 = round(x2)
+        y2 = round(y2)
+        if y1 > y2:
+            self._adb_command(f"shell input swipe {x1} {y1} {x2} {y2} {int(time * 100)}")
+            return f"Swiped from ({x1}, {y1}) to ({x2}, {y2})"
+        if y2 > y1:
+            self._adb_command(f"shell input swipe {x2} {y2} {x1} {y1} {int(time * 100)}")
+            return f"Swiped from ({x2}, {y2}) to ({x1}, {y1})"
 
     def _type(self, text: str):
         # 模拟输入文本事件
@@ -246,8 +284,8 @@ class MobileUse(BaseTool):
 
     @staticmethod
     def _wait(time: int = 3):
-        tm.sleep(time * 1000)
-        return f"Waited for {time * 1000} seconds"
+        tm.sleep(time)
+        return f"Waited for {time} seconds"
 
     def _terminate(self, status: str):
         # 模拟任务终止事件
@@ -293,11 +331,11 @@ class MobileUse(BaseTool):
             self._adb_command(f"pull {phone_path} {local_path}")
             logger.info(f"成功保存到{local_path}")
             resized_path = os.path.join(os.path.dirname(local_path), "screenshot_resized.png")
-            resize_image(local_path, resized_path)
+            h_scale_factor, w_scale_factor = resize_image(local_path, resized_path)
             # 可选：删除设备上的截图以节省空间
             logger.info("正在清除手机上的截图...")
             self._adb_command(f"shell rm {phone_path}")
-            return resized_path
+            return resized_path, h_scale_factor, w_scale_factor
         except Exception as e:
             logger.error(f"出现错误：{e}")
             return None
